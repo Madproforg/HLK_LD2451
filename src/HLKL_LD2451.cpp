@@ -577,9 +577,10 @@ void HLK_LD2451::initParamsTask(void * param) {
     vTaskDelay(delayBetweenCmds);
     if (debug) debug->println("IPT: Disable config cmds");
     owner->endConfiguration();
+    owner->waitForAck(LD2451::CMD_endConfig, HLK_LD2451_CMDACKWAIT*2);
     vTaskDelay(delayBetweenCmds);
     //if (debug) debug->printf("-----\r\nIPT: Min Stack Free: %d\r\n-----\r\n", uxTaskGetStackHighWaterMark(NULL));
-
+    if (debug) debug->println("IPT: vTaskDelete");
     // don't need this task after one run
     vTaskDelete(NULL);
 }

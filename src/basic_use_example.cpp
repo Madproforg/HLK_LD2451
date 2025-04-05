@@ -21,13 +21,10 @@ void setup() {
     // wait for serial to init
     while (!Serial) vTaskDelay(10);
 
-    // delay to allow serial monitor to connect
-    vTaskDelay(2000);
-
     // send sensor debugging output to Serial monitor
     ld2451_sensor.debugOutput(&Serial);
 
-    // begin sensor reading with defaults
+    // begin sensor reading with defaults pins 15 for RX  16 for TX
     ld2451_sensor.begin();
 
     // begin sensor reading with custome serial paramaters
@@ -37,7 +34,6 @@ void setup() {
 void loop() {
     // wait 1 second for a detection event
     if (ld2451_sensor.waitForDetection(1000)) {
-
         // detected vehicles are in a vector - no manual memory management
         std::vector<LD2451::vehicleTarget_t> detected = ld2451_sensor.getTargets();
         
@@ -53,6 +49,7 @@ void loop() {
             Serial.printf("With a speed of %d km/h\r\n", singleTarget.speed);
             Serial.printf("SNR: %d\r\n", singleTarget.snr);
             Serial.println("-----");
+            vehicleNumber++;
         }
     }
 }
