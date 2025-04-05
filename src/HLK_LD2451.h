@@ -93,6 +93,16 @@ class HLK_LD2451 {
             uint32_t minor;
         } firmware_data;
 
+        // struct contain sensor configuration parameters
+        struct  {
+            uint8_t maxdistance;
+            uint8_t direction; // 0 away - 1 towards - 2 both
+            uint8_t minspeed;
+            uint8_t delaytime;
+            uint8_t triggertimes;
+            uint8_t snrthreshold; // 8 low - 0 high
+        } configParameters;
+
         String getFirmwareVersion();
         bool enableConfiguration();
         bool endConfiguration();
@@ -111,7 +121,7 @@ class HLK_LD2451 {
         HardwareSerial &_radarSerial;
 
         // handle for the task that reads from the sensor
-        TaskHandle_t readerTaskHandle;
+        TaskHandle_t readerTaskHandle, initParamsTaskHandle;
 
         // pointer to a uart for ouputing debugging info
         Stream *_debugUart;
@@ -121,14 +131,6 @@ class HLK_LD2451 {
         SemaphoreHandle_t detectionWaiter;
         std::vector<LD2451::vehicleTarget_t> targets;
         bool _InConfig = false;
-        struct  {
-            uint8_t maxdistance;
-            uint8_t direction; // 0 away - 1 towards - 2 both
-            uint8_t minspeed;
-            uint8_t delaytime;
-            uint8_t triggertimes;
-            uint8_t snrthreshold; // 8 low - 0 high
-        } _configParameters;
 
         struct {
             LD2451::ackResult result;
@@ -136,6 +138,7 @@ class HLK_LD2451 {
 
         } ackResult;
         static void readerTask(void *param);
+        static void initParamsTask(void *param);
         void processOther(uint16_t datalength);
         void processTargets(uint16_t datalength);
 

@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 
-// define these before including HLK_LD2451.h if not using pins 15 & 16
-// if not defined the header sets these
+// can define these before including HLK_LD2451.h if not using pins 15 & 16
+// if not defined the header sets them
 // can be overridden in the a begin() call
 //#define RADAR_TX 16
 //#define RADAR_RX 15
@@ -20,6 +20,9 @@ void setup() {
 
     // wait for serial to init
     while (!Serial) vTaskDelay(10);
+
+    // delay to allow serial monitor to connect
+    vTaskDelay(2000);
 
     // send sensor debugging output to Serial monitor
     ld2451_sensor.debugOutput(&Serial);
