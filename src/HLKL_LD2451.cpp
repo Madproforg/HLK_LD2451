@@ -356,7 +356,7 @@ bool HLK_LD2451::setSensitivityParameters(uint8_t trigCount, uint8_t snrLevel, u
     bool result = waitForAck(LD2451::CMD_sensitivityConfig, HLK_LD2451_CMDACKWAIT);
     if (!result) {
         sendCommand(command, sizeof(command));
-        result = waitForAck(LD2451::CMD_readTargetParameter, HLK_LD2451_CMDACKWAIT);
+        result = waitForAck(LD2451::CMD_sensitivityConfig, HLK_LD2451_CMDACKWAIT);
     }
     if (setConfig) { 
         endConfiguration();
@@ -383,7 +383,7 @@ bool HLK_LD2451::readSensitivityParameters() {
     bool result = waitForAck(LD2451::CMD_readSensitivityConfig, HLK_LD2451_CMDACKWAIT);
     if (!result) {
         sendCommand(command, sizeof(command));
-        result = waitForAck(LD2451::CMD_readTargetParameter, HLK_LD2451_CMDACKWAIT);
+        result = waitForAck(LD2451::CMD_readSensitivityConfig, HLK_LD2451_CMDACKWAIT);
     }
     if (setConfig) { 
         endConfiguration();
@@ -407,7 +407,7 @@ bool HLK_LD2451::readFirmwareVersion() {
     bool result = waitForAck(LD2451::CMD_readFirmwareVersion, HLK_LD2451_CMDACKWAIT);
     if (!result) {
         sendCommand(command, sizeof(command));
-        result = waitForAck(LD2451::CMD_readTargetParameter, HLK_LD2451_CMDACKWAIT);
+        result = waitForAck(LD2451::CMD_readFirmwareVersion, HLK_LD2451_CMDACKWAIT);
     }
     if (setConfig) { 
         endConfiguration();
@@ -430,7 +430,7 @@ bool HLK_LD2451::resetToFactory() {
     bool result = waitForAck(LD2451::CMD_restoreFactory, HLK_LD2451_CMDACKWAIT);
     if (!result) {
         sendCommand(command, sizeof(command));
-        result = waitForAck(LD2451::CMD_readTargetParameter, HLK_LD2451_CMDACKWAIT);
+        result = waitForAck(LD2451::CMD_restoreFactory, HLK_LD2451_CMDACKWAIT);
     }
     if (setConfig) { 
         endConfiguration();
@@ -453,7 +453,7 @@ bool HLK_LD2451::rebootModule() {
     bool result = waitForAck(LD2451::CMD_restartModule, HLK_LD2451_CMDACKWAIT);
     if (!result) {
         sendCommand(command, sizeof(command));
-        result = waitForAck(LD2451::CMD_readTargetParameter, HLK_LD2451_CMDACKWAIT);
+        result = waitForAck(LD2451::CMD_restartModule, HLK_LD2451_CMDACKWAIT);
     }
     if (setConfig) { 
         endConfiguration();
@@ -484,7 +484,7 @@ bool HLK_LD2451::setBaudRate(LD2451::baudRates baudrate) {
     bool result =  waitForAck(LD2451::CMD_setBaudrate, HLK_LD2451_CMDACKWAIT);
     if (!result) {
         sendCommand(command, sizeof(command));
-        result = waitForAck(LD2451::CMD_readTargetParameter, HLK_LD2451_CMDACKWAIT);
+        result = waitForAck(LD2451::CMD_setBaudrate, HLK_LD2451_CMDACKWAIT);
     }
     if (setConfig) {
         endConfiguration();
