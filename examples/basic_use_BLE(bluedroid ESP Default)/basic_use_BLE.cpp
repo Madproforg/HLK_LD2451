@@ -1,4 +1,11 @@
+/**
+ * Simple exmaple of using the HLK_LD2451 via BLE or serial
+ * comment 
+ */
+//#define  SERIAL_CONNECTION
+#define  BLE_CONNECTION
 #include <Arduino.h>
+#if defined(SERIAL_CONNECTION) 
 #include <HardwareSerial.h>
 
 // can define these before including HLK_LD2451.h if not using pins 15 & 16
@@ -6,14 +13,26 @@
 // can be overridden in the a begin() call
 //#define RADAR_TX 16
 //#define RADAR_RX 15
+#else
+#include <BLEDevice.h>
+#endif
 
 #include <HLK_LD2451.h>
+
+#if defined(SERIAL_CONNECTION)
 
 // which uart to use for the sensor
 HardwareSerial uart2(2);
 
 // sensor initial config
-HLK_LD2451 ld2451_sensor(uart2);
+HLK_LD2451 ld2451_sensor(&uart2);
+#else
+// bt address of sensor
+static BLEAddress sensorAddress("57:01:f2:86:ac:c9");
+
+// sensor initial config
+HLK_LD2451 ld2451_sensor;
+#endif
 
 void setup() {
     Serial.begin(115200);
@@ -25,10 +44,17 @@ void setup() {
     ld2451_sensor.debugOutput(&Serial);
 
     // begin sensor reading with defaults pins 15 for RX  16 for TX
+#if defined(SERIAL_CONNECTION)
+    // begin sensor reading with defaults pins 15 for RX  16 for TX
     ld2451_sensor.begin();
 
-    // begin sensor reading with custome serial paramaters
+    // begin sensor reading with custom serial paramaters
     //ld2451_sensor.begin(115200, SERIAL_8N1, 15, 16);
+#else
+    // begin ble connection to sensor
+    ld2451_sensor.begin_BLE(&sensorAddress);
+#endif
+
 }
 
 void loop() {

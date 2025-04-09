@@ -9,6 +9,10 @@
  */
 #include <Arduino.h>
 #include <HardwareSerial.h>
+#include <BLEDevice.h>
+#include <memory>
+#include <vector>
+
 #include "HLK_LD2451.h"
 
 void hexout(byte *buffer, int len) {
@@ -18,6 +22,9 @@ void hexout(byte *buffer, int len) {
 }
 
 namespace LD2451 {
+    /**
+     * returns a String for the cmd
+     */
     String cmdName(LD2451::cmdValue cmd) {
         switch (cmd) {
             case CMD_enableConfig: return String("Enable Config");
@@ -35,26 +42,156 @@ namespace LD2451 {
     }
 }// end namespace
 
+namespace HLK_LD2451BLE {
+    // service which the sensor advertises
+    static BLEUUID ld2451AdvertisedServiceUUID(BLEUUID((uint16_t)0xaf30));
+
+    // general service to connect
+    static BLEUUID ld2451UsageServiceUUID(BLEUUID((uint16_t)0xfff0));
+
+    // BLE Characteristic for obtaining data from sensor
+    static BLEUUID ld2451DataUUID(BLEUUID((uint16_t)0xfff1));
+
+    // BLE Characteristic to write cmds to
+    static BLEUUID ld2451CmdUUID(BLEUUID((uint16_t)0xfff2));
+
+    // hacks to work around static onNotify callback
+    HLK_LD2451 *owner = nullptr; 
+    Stream* _debugUart = nullptr;
+}// end namespace HLK_LD2451BLE
+
 // millis to wait for ACK
 #define HLK_LD2451_CMDACKWAIT 200
 
-HLK_LD2451::HLK_LD2451(HardwareSerial &Uart) : _radarSerial(Uart) {
+/**
+ * Constructor for using uart interface 
+ * */
+HLK_LD2451::HLK_LD2451(HardwareSerial *Uart) : _radarSerial(Uart) {
+    radarLock = xSemaphoreCreateMutex();
+    ackWaiter = xSemaphoreCreateBinary();
+    detectionWaiter = xSemaphoreCreateBinary();
+    _debugUart = nullptr;
+    firmware_data.type == 0;
+}
+
+/**
+ * Constructor for using BLE interface
+ */
+HLK_LD2451::HLK_LD2451() : _radarSerial() {
     radarLock = xSemaphoreCreateMutex();
     ackWaiter = xSemaphoreCreateBinary();
     detectionWaiter = xSemaphoreCreateBinary();
     _debugUart = NULL;
     firmware_data.type == 0;
+    usingBLE = true;
+    HLK_LD2451BLE::owner = this;
 }
 
+/**
+ * begin BLE
+ * @param *pAddress - bt address of sensor to connect to
+ * 
+ * @return true - success  |  false - failed
+ */
+bool HLK_LD2451::begin_BLE(BLEAddress *pAddress) {
+    usingBLE = true;
+    BLEDevice::init("HLK_LD2451_READER");
+    bleServerAddress = pAddress;
+    if (_debugUart) _debugUart->printf("Connecting to BLE Sensor %s\r\n", bleServerAddress->toString().c_str());
+    pClient = BLEDevice::createClient();
+    if (_debugUart) _debugUart->println(" BLE client created");
+    if (pClient->connect(*bleServerAddress)) {
+        if (_debugUart) _debugUart->println(" BLE Connected to sensor");
+    } else {
+        if (_debugUart) _debugUart->println(" BLE failed to connect to sensor");
+        return false;
+    }
+
+    if (_debugUart) _debugUart->println(" BLE Obtaining Service reference");
+    sensorRemoteService = pClient->getService(HLK_LD2451BLE::ld2451UsageServiceUUID);
+    if (sensorRemoteService == nullptr) {
+        if (_debugUart) _debugUart->print(" Failed to obtain service reference UUID: ");
+        if (_debugUart) _debugUart->println(HLK_LD2451BLE::ld2451UsageServiceUUID.toString().c_str());
+        return false;
+    }
+
+    if (_debugUart) _debugUart->println(" BLE obtaining data characteristic");
+    bleData = sensorRemoteService->getCharacteristic(HLK_LD2451BLE::ld2451DataUUID);
+    if (bleData == nullptr) {
+        if (_debugUart) _debugUart->println("Failed to obtain data characteristic");
+        return false;
+    }
+
+    if (_debugUart) _debugUart->println(" BLE obtaining cmd characteristic");
+    bleCmd = sensorRemoteService->getCharacteristic(HLK_LD2451BLE::ld2451CmdUUID);
+    if (bleCmd == nullptr) {
+        if (_debugUart) _debugUart->println("Failed to obtain cmd characteristic");
+        return false;
+    }
+
+    if (_debugUart) _debugUart->println("Enabling ble notifications for data");
+    bleData->registerForNotify(newData);
+
+        // one shot task to read current paramaters from the sensor
+    // without a delay between cmds something gets lost
+    xTaskCreate(initParamsTask, "InitParams", 3000, this, 1, &initParamsTaskHandle);
+
+    return true;
+}
+
+/**
+ * called by the on_notify call back for initial data processing
+ */
+void HLK_LD2451::processBLEData(uint8_t* pData, size_t length) {
+    if (length < 8) return;
+    uint16_t datalength = pData[5] << 8 | pData[4];
+    if (pData[0] == 0xF4 && pData[1] == 0xF3 && pData[2] == 0xF2 && pData[3] == 0xF1) {
+        if (datalength) processTargets(datalength, pData+6);
+    }
+    if (pData[0] == 0xFD && pData[1] == 0xFC && pData[2] == 0xFB && pData[3] == 0xFA) {
+        if (datalength) processOther(datalength, pData+6);
+    }
+}
+
+/**
+ * on_notify callback - called when sensor sends data
+ */
+void HLK_LD2451::newData(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify)
+{
+    if (HLK_LD2451BLE::_debugUart) {
+        HLK_LD2451BLE::_debugUart->print("Data Received: ");
+        for(auto i=0; i<length; i++) {
+            HLK_LD2451BLE::_debugUart->printf("%02x", pData[i]);
+            HLK_LD2451BLE::_debugUart->print(" ");
+        }
+        HLK_LD2451BLE::_debugUart->println();
+    }
+    HLK_LD2451BLE::owner->processBLEData(pData, length);
+        
+
+}
+
+/**
+ * Enabled serial debugging output
+ * @param uart - point to initialised uart interface
+ */
 void HLK_LD2451::debugOutput(Stream *uart) {
     _debugUart = uart;
+    HLK_LD2451BLE::_debugUart = uart;
 }
 
+/**
+ * begin serial connection to sensor
+ * @param baud - baud rate to use default 115200
+ * @param config - serial config default SERIAL_8N1
+ * @param rxPin - pin connected to sensors RX 
+ * @param txPing - pin connected to sensors TX
+ */
 void HLK_LD2451::begin(unsigned long baud, uint32_t config, int8_t rxPin, int8_t txpin) {
     unsigned long startmillis = millis();
-    //_radarSerial.setTimeout(500);
-    //_radarSerial.setDebugOutput(true);
-    _radarSerial.begin(baud, config, rxPin, txpin);
+    //_radarSerial->setTimeout(500);
+    //_radarSerial->setDebugOutput(true);
+    _radarSerial->begin(baud, config, rxPin, txpin);
     xTaskCreatePinnedToCore(readerTask, "LD2451Reader", 4000, this, 1, &readerTaskHandle, xTaskGetCoreID(NULL));
 
     // one shot task to read current paramaters from the sensor
@@ -91,9 +228,13 @@ void HLK_LD2451::begin(unsigned long baud, uint32_t config, int8_t rxPin, int8_t
  * 
  * @param datalength: length of buffer
  */
-void HLK_LD2451::processOther(uint16_t datalength) {
+void HLK_LD2451::processOther(uint16_t datalength, byte* data) {
     byte buffer[datalength];
-    int numbytes = _radarSerial.readBytes(buffer, datalength);
+    if (!usingBLE) {
+        _radarSerial->readBytes(buffer, datalength);
+    } else {
+        memcpy(static_cast<void*>(buffer), static_cast<const void*>(data), datalength);
+    }
     ackResult.result = static_cast<LD2451::ackResult>(buffer[1]);
     ackResult.cmd = static_cast<LD2451::cmdValue>(buffer[0]);
     if (_debugUart) _debugUart->print("ACK for ");
@@ -171,14 +312,44 @@ void HLK_LD2451::processOther(uint16_t datalength) {
  * 
  * @param datalength: length of buffer
  */
-void HLK_LD2451::processTargets(uint16_t datalength) {
+void HLK_LD2451::processTargets(uint16_t datalength, byte* data) {
+    
     byte buffer[datalength];
-    _radarSerial.readBytes(buffer, datalength);
+    if (!usingBLE) {
+        _radarSerial->readBytes(buffer, datalength);
+        if (_debugUart) {
+            _debugUart->print("buff var: ");
+            for(auto i=0; i<datalength; i++) {
+                _debugUart->printf("%02x", buffer[i]);
+                _debugUart->print(" ");
+            }
+            _debugUart->println();
+        }
+    } else {
+        if (_debugUart) {
+            _debugUart->print("data var: ");
+            for(auto i=0; i<datalength; i++) {
+                _debugUart->printf("%02x", data[i]);
+                _debugUart->print(" ");
+            }
+            _debugUart->println();
+        }
+        memcpy(static_cast<void*>(buffer), static_cast<const void*>(data), datalength);
+        if (_debugUart) {
+            _debugUart->print("buff var: ");
+            for(auto i=0; i<datalength; i++) {
+                _debugUart->printf("%02x", buffer[i]);
+                _debugUart->print(" ");
+            }
+            _debugUart->println();
+        }
+    }
     LD2451::vehicleTarget_t target;
     
     xSemaphoreTake(radarLock, portMAX_DELAY);
     for(auto numtargets = buffer[1]; numtargets>0; numtargets--) {
-        memcpy(static_cast<void *>(&target), static_cast<const void *>(buffer+2), sizeof(LD2451::vehicleTarget_t));
+        if (_debugUart) _debugUart->printf("offset: %d\r\n", 2+(sizeof(LD2451::vehicleTarget_t)*(numtargets-1)));
+        memcpy(static_cast<void *>(&target), static_cast<const void *>(buffer+2+(sizeof(LD2451::vehicleTarget_t)*(numtargets-1))), sizeof(LD2451::vehicleTarget_t));
         int16_t angleProcessing = *(uint8_t *)(&target.angle);
         if (_debugUart) Serial.printf("Angle: %d original - %d adjusted\r\n", angleProcessing, angleProcessing - 0x80);
         target.angle = angleProcessing-0x80;
@@ -206,12 +377,12 @@ void HLK_LD2451::readerTask(void *param) {
     if (owner->_debugUart) owner->_debugUart->printf("Reader Task Started on core %d\r\n", xPortGetCoreID());
 
     while(true) {
-        availableBytes = owner->_radarSerial.available();
+        availableBytes = owner->_radarSerial->available();
         while(availableBytes) {
             if (availableBytes >= 6) {
                 
                 // check for start marker && data length
-                owner->_radarSerial.readBytes(buffer, 6);
+                owner->_radarSerial->readBytes(buffer, 6);
                 datalength = buffer[5] << 8 | buffer[4];
 
                 // check for target data header
@@ -225,14 +396,14 @@ void HLK_LD2451::readerTask(void *param) {
                 }
 
                 // empty buffer
-                while(owner->_radarSerial.available()) {
-                    int dummy = owner->_radarSerial.read();
+                while(owner->_radarSerial->available()) {
+                    int dummy = owner->_radarSerial->read();
                 }
                 
-                availableBytes = owner->_radarSerial.available();
+                availableBytes = owner->_radarSerial->available();
             } else {
-                int dummy = owner->_radarSerial.read();
-                availableBytes = owner->_radarSerial.available();
+                int dummy = owner->_radarSerial->read();
+                availableBytes = owner->_radarSerial->available();
             }
         }
         
@@ -261,13 +432,18 @@ std::vector<LD2451::vehicleTarget_t> HLK_LD2451::getTargets(void) {
  */
 size_t HLK_LD2451::sendCommand(uint8_t* command, size_t length) {
     uint8_t count=0;
-    while(!_radarSerial.availableForWrite() && count < 100) {
-        vTaskDelay(10);
-        count++;
+    if (!usingBLE) {
+        while(!_radarSerial->availableForWrite() && count < 100) {
+            vTaskDelay(10);
+            count++;
+        }
+        if (count == 100) return 0;
+        if (_debugUart) _debugUart->println("Sending cmd");
+        return(_radarSerial->write(command, length));
+    } else {
+        bleCmd->writeValue(command, length, false);
+        return 1;
     }
-    if (count == 100) return 0;
-    if (_debugUart) _debugUart->println("Sending cmd");
-    return(_radarSerial.write(command, length));
 }
 
 /**
@@ -469,7 +645,7 @@ bool HLK_LD2451::rebootModule() {
  */
 bool HLK_LD2451::setBaudRate(LD2451::baudRates baudrate) {
     uint8_t command[] = {0xFD, 0xFC, 0xFB, 0xFA, 0x04, 0x00, 0xA1, 0x00, baudrate, 0x00, 0x04, 0x03, 0x02, 0x01};
-    uint32_t currentBaudrate = _radarSerial.baudRate();
+    uint32_t currentBaudrate = _radarSerial->baudRate();
     uint32_t newBaudrate = 0;
     uint32_t baudrates[8] = { 9600, 19200, 38400, 57600, 115200, 230400, 256000, 460800 };
     

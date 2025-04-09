@@ -25,6 +25,7 @@
 #include <vector>
 
 #include <HardwareSerial.h>
+#include <BLEDevice.h>
 
 namespace LD2451 {
     /**
@@ -76,10 +77,18 @@ namespace LD2451 {
 }; // endnamespace
 
 
+namespace HLK_LD2451BLE {
+    class scanForLD2451Callbacks : public BLEAdvertisedDeviceCallbacks {
+        void onResult(BLEAdvertisedDevice advertisedDevice);   
+        BLEAddress* foundAddress = nullptr;
+    };
+}
 class HLK_LD2451 {
     public:
-        HLK_LD2451(HardwareSerial &Uart);
+        HLK_LD2451();
+        HLK_LD2451(HardwareSerial *Uart);
         void debugOutput(Stream *debugUart);
+        bool begin_BLE(BLEAddress *pAddress = nullptr);
         void begin(unsigned long baud=115200, uint32_t config=SERIAL_8N1, int8_t rxPin=RADAR_RX, int8_t txpin=RADAR_TX);
         std::vector<LD2451::vehicleTarget_t> getTargets(void);
 
@@ -116,10 +125,10 @@ class HLK_LD2451 {
         bool waitForAck(LD2451::cmdValue cmd, unsigned long waitMillis);
         bool setBaudRate(LD2451::baudRates baudrate);
         bool waitForDetection(unsigned long timeout);
+        void processBLEData(uint8_t* pData, size_t length);
     private :
         // uart for talking to sensor
-        HardwareSerial &_radarSerial;
-
+        HardwareSerial* _radarSerial;
         // handle for the task that reads from the sensor
         TaskHandle_t readerTaskHandle, initParamsTaskHandle;
 
@@ -137,12 +146,23 @@ class HLK_LD2451 {
             LD2451::cmdValue cmd;
 
         } ackResult;
+        bool usingBLE = false;
         static void readerTask(void *param);
         static void initParamsTask(void *param);
-        void processOther(uint16_t datalength);
-        void processTargets(uint16_t datalength);
-
+        
+        void processOther(uint16_t datalength, byte* data=nullptr);
+        void processTargets(uint16_t datalength, byte* data=nullptr);
         size_t sendCommand(uint8_t* command, size_t length);
+
+        // ble vars
+        static void newData(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify);
+        BLEAddress *bleServerAddress; // ble mac address of sensor
+        BLEClient* pClient;
+        BLERemoteService* pRemoteService;
+        BLERemoteCharacteristic* bleData;
+        BLERemoteCharacteristic* bleCmd;
+        BLERemoteService* sensorRemoteService;
+
 
 };
 #endif
