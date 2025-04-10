@@ -6,18 +6,22 @@
 #define  BLE_CONNECTION
 #include <Arduino.h>
 #if defined(SERIAL_CONNECTION) 
-#include <HardwareSerial.h>
+    #include <HardwareSerial.h>
 
-// can define these before including HLK_LD2451.h if not using pins 15 & 16
-// if not defined the header sets them
-// can be overridden in the a begin() call
-//#define RADAR_TX 16
-//#define RADAR_RX 15
+    // can define these before including HLK_LD2451.h if not using pins 15 & 16
+    // if not defined the header sets them
+    // can be overridden in the a begin() call
+    //#define RADAR_TX 16
+    //#define RADAR_RX 15
 #else
-#include <BLEDevice.h>
+    #if defined(USE_NIMBLE_LIBRARY)
+    #include <NimBLEDevice.h>
+    #else
+    #include <BLEDevice.h>
+    #endif
 #endif
 
-#include <HLK_LD2451.h>
+#include "HLK_LD2451.h"
 
 #if defined(SERIAL_CONNECTION)
 
@@ -28,8 +32,11 @@ HardwareSerial uart2(2);
 HLK_LD2451 ld2451_sensor(&uart2);
 #else
 // bt address of sensor
+#if defined(USE_NIMBLE_LIBRARY)
+static NimBLEAddress sensorAddress(std::string("57:01:f2:86:ac:c9"), 0);
+#else
 static BLEAddress sensorAddress("57:01:f2:86:ac:c9");
-
+#endif
 // sensor initial config
 HLK_LD2451 ld2451_sensor;
 #endif

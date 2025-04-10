@@ -25,7 +25,11 @@
 #include <vector>
 
 #include <HardwareSerial.h>
+#if !defined(USE_NIMBLE_LIBRARY)
 #include <BLEDevice.h>
+#else
+#include <NimBLEDevice.h>
+#endif
 
 namespace LD2451 {
     /**
@@ -82,6 +86,7 @@ namespace HLK_LD2451BLE {
         void onResult(BLEAdvertisedDevice advertisedDevice);   
         BLEAddress* foundAddress = nullptr;
     };
+
 }
 class HLK_LD2451 {
     public:

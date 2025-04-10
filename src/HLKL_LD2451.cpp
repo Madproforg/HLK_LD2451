@@ -9,9 +9,14 @@
  */
 #include <Arduino.h>
 #include <HardwareSerial.h>
-#include <BLEDevice.h>
 #include <memory>
 #include <vector>
+#if !defined(USE_NIMBLE_LIBRARY)
+#include <BLEDevice.h>
+#else
+#include <NimBLEDevice.h>
+#endif
+
 
 #include "HLK_LD2451.h"
 
@@ -130,7 +135,11 @@ bool HLK_LD2451::begin_BLE(BLEAddress *pAddress) {
     }
 
     if (_debugUart) _debugUart->println("Enabling ble notifications for data");
+#if !defined(USE_NIMBLE_LIBRARY)    
     bleData->registerForNotify(newData);
+#else
+    bleData->subscribe(true, newData, false);
+#endif
 
         // one shot task to read current paramaters from the sensor
     // without a delay between cmds something gets lost

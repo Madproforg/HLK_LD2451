@@ -1,0 +1,1 @@
+See main readme for how to switch to NimBLE-Arduino rather than the default
