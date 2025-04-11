@@ -111,6 +111,7 @@ bool HLK_LD2451::begin_BLE(BLEAddress *pAddress) {
         if (_debugUart) _debugUart->println(" BLE failed to connect to sensor");
         return false;
     }
+    
 
     if (_debugUart) _debugUart->println(" BLE Obtaining Service reference");
     sensorRemoteService = pClient->getService(HLK_LD2451BLE::ld2451UsageServiceUUID);
@@ -138,7 +139,7 @@ bool HLK_LD2451::begin_BLE(BLEAddress *pAddress) {
 #if !defined(USE_NIMBLE_LIBRARY)    
     bleData->registerForNotify(newData);
 #else
-    bleData->subscribe(true, newData, false);
+    bleData->subscribe(true, newData, true);
 #endif
 
         // one shot task to read current paramaters from the sensor
@@ -447,11 +448,12 @@ size_t HLK_LD2451::sendCommand(uint8_t* command, size_t length) {
             count++;
         }
         if (count == 100) return 0;
-        if (_debugUart) _debugUart->println("Sending cmd");
+        if (_debugUart) _debugUart->println("Sending cmd via serial");
         return(_radarSerial->write(command, length));
     } else {
+        if (_debugUart) _debugUart->println("Sending cmd via ble");
         bleCmd->writeValue(command, length, false);
-        return 1;
+        return length;
     }
 }
 
