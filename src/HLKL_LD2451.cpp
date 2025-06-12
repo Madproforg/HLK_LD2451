@@ -11,12 +11,13 @@
 #include <HardwareSerial.h>
 #include <memory>
 #include <vector>
+#if defined(HLK2514ENABLE_BLE)        
 #if !defined(USE_NIMBLE_LIBRARY)
 #include <BLEDevice.h>
 #else
 #include <NimBLEDevice.h>
 #endif
-
+#endif
 
 #include "HLK_LD2451.h"
 
@@ -47,6 +48,7 @@ namespace LD2451 {
     }
 }// end namespace
 
+#if defined(HLK2514ENABLE_BLE)        
 namespace HLK_LD2451BLE {
     // service which the sensor advertises
     static BLEUUID ld2451AdvertisedServiceUUID(BLEUUID((uint16_t)0xaf30));
@@ -64,6 +66,7 @@ namespace HLK_LD2451BLE {
     HLK_LD2451 *owner = nullptr; 
     Stream* _debugUart = nullptr;
 }// end namespace HLK_LD2451BLE
+#endif
 
 // millis to wait for ACK
 #define HLK_LD2451_CMDACKWAIT 200
@@ -79,6 +82,7 @@ HLK_LD2451::HLK_LD2451(HardwareSerial *Uart) : _radarSerial(Uart) {
     firmware_data.type == 0;
 }
 
+#if defined(HLK2514ENABLE_BLE)        
 /**
  * Constructor for using BLE interface
  */
@@ -180,14 +184,16 @@ void HLK_LD2451::newData(BLERemoteCharacteristic* pBLERemoteCharacteristic, uint
         
 
 }
-
+#endif
 /**
  * Enabled serial debugging output
  * @param uart - point to initialised uart interface
  */
 void HLK_LD2451::debugOutput(Stream *uart) {
     _debugUart = uart;
+#if defined(HLK2514ENABLE_BLE) 
     HLK_LD2451BLE::_debugUart = uart;
+#endif
 }
 
 /**
@@ -451,10 +457,14 @@ size_t HLK_LD2451::sendCommand(uint8_t* command, size_t length) {
         if (_debugUart) _debugUart->println("Sending cmd via serial");
         return(_radarSerial->write(command, length));
     } else {
+        #if defined(HLK2514ENABLE_BLE) 
         if (_debugUart) _debugUart->println("Sending cmd via ble");
         bleCmd->writeValue(command, length, false);
+
         return length;
+        #endif
     }
+    return 0;
 }
 
 /**
